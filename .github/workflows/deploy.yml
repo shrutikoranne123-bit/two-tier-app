@@ -1,4 +1,4 @@
-name: Build & Deploy (Docker Compose)
+name: Deploy to EC2
 
 on:
   push:
@@ -10,35 +10,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      # 1️⃣ Checkout repo
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Login to Docker Hub
-      run: |
-        echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
-        docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      # 2️⃣ Set up Docker
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-    - name: Build backend image
-      run: |
-        docker build -t ${{ secrets.DOCKER_USERNAME }}/backend:latest ./backend
+      # 3️⃣ Login to DockerHub
+      - name: Log in to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build frontend image
-      run: |
-        docker build -t ${{ secrets.DOCKER_USERNAME }}/frontend:latest ./frontend
+      # 4️⃣ Build and push backend Docker image
+      - name: Build and push backend
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/backend:latest ./backend
+          docker push ${{ secrets.DOCKER_USERNAME }}/backend:latest
 
-    - name: Push images
-      run: |
-        docker push ${{ secrets.DOCKER_USERNAME }}/backend:latest
-        docker push ${{ secrets.DOCKER_USERNAME }}/frontend:latest
+      # 5️⃣ Build and push frontend Docker image
+      - name: Build and push frontend
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/frontend:latest ./frontend
+          docker push ${{ secrets.DOCKER_USERNAME }}/frontend:latest
 
-    - name: Deploy to EC2
-      uses: appleboy/ssh-action@v1
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USERNAME }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          cd ~
-          docker pull ${{ secrets.DOCKER_USERNAME }}/backend:latest
-          docker pull ${{ secrets.DOCKER_USERNAME }}/frontend:latest
-          docker compose up -d
+      # 6️⃣ SSH into EC2 and deploy containers
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_USERNAME }}/backend:latest
+            docker pull ${{ secrets.DOCKER_USERNAME }}/frontend:latest
+            docker stop backend || true
+            docker rm backend || true
+            docker stop frontend || true
+            docker rm frontend || true
+            docker run -d -p 5000:5000 --name backend ${{ secrets.DOCKER_USERNAME }}/backend:latest
+            docker run -d -p 80:80 --name frontend --link backend ${{ secrets.DOCKER_USERNAME }}/frontend:latest
