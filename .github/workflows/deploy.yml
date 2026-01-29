@@ -38,7 +38,7 @@ jobs:
         username: ${{ secrets.EC2_USERNAME }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-          cd ~/2tier-EC2-without-ingress
+          cd ~
           docker pull ${{ secrets.DOCKER_USERNAME }}/backend:latest
           docker pull ${{ secrets.DOCKER_USERNAME }}/frontend:latest
           docker compose up -d
